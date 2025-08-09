@@ -1,92 +1,109 @@
 // app/kakao.tsx
 
-import React, { useRef } from 'react';
-import { StyleSheet, SafeAreaView, View, ActivityIndicator, Alert } from 'react-native';
-import { WebView } from 'react-native-webview';
+import React, { useState } from 'react'; // useRef 대신 useState를 사용합니다.
+import { StyleSheet, SafeAreaView, View, ActivityIndicator, Alert, TouchableOpacity, Text, Image } from 'react-native'; // UI 요소를 추가합니다.
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import axios from 'axios'; // axios 추가
+import axios from 'axios';
+import { login } from '@react-native-seoul/kakao-login'; // WebView 대신 네이티브 로그인 라이브러리를 사용합니다.
 
-const KAKAO_REST_API_KEY = 'c7bae595a41d669362115e5d78b4aad4'; // 본인의 카카오 REST API 키
-const BACKEND_REDIRECT_URI = 'https://www.no-plan.cloud/api/v1/users/kakao/'; // BE가 알려준 Redirect URI
-const BACKEND_API_URL = 'https://www.no-plan.cloud/api/v1/users/kakao/'; // POST 요청을 보낼 최종 목적지
+// --- 더 이상 필요하지 않은 변수들 ---
+// const KAKAO_REST_API_KEY = '...'; // 네이티브 SDK가 내부적으로 처리하므로 프론트엔드에서는 필요 없습니다.
+// const BACKEND_REDIRECT_URI = '...'; // 네이티브 방식에서는 Redirect URI 개념을 프론트엔드가 신경쓰지 않습니다.
+
+// 백엔드와 통신할 API 주소는 그대로 사용합니다.
+const BACKEND_API_URL = 'https://www.no-plan.cloud/api/v1/users/kakao/';
 
 export default function KakaoLoginScreen() {
   const router = useRouter();
-  const webviewRef = useRef<WebView>(null);
-  const isCodeHandled = useRef(false); // 중복 실행 방지 플래그
+  // 로딩 상태를 관리하기 위한 state
+  const [isLoading, setIsLoading] = useState(false);
 
-  // 백엔드로 POST 요청을 보내는 함수
-  const postCodeToBackend = async (code: string) => {
+  // 백엔드로 토큰을 보내는 함수 (기존 로직 재활용 및 수정)
+  // code 대신 accessToken을 받아서 처리합니다.
+  const sendTokenToBackend = async (accessToken: string) => {
     try {
-      console.log(`백엔드로 인가 코드(code)를 POST 요청으로 보냅니다: ${code}`);
+      console.log(`백엔드로 Access Token을 POST 요청으로 보냅니다: ${accessToken}`);
 
-      // dj-rest-auth의 SocialLoginView는 'code'를 받아서 처리할 수 있습니다.
+      // dj-rest-auth는 access_token도 받을 수 있습니다.
       const response = await axios.post(BACKEND_API_URL, {
-        code: code,
+        access_token: accessToken, // body에 code 대신 access_token을 담아 보냅니다.
       });
 
       console.log('백엔드로부터 최종 JWT 응답 수신:', response.data);
 
-      // 백엔드로부터 받은 JWT 토큰 저장
-      const { access, refresh } = response.data; // 실제 백엔드 응답 구조 확인 필요
-      if (access) {
+      // 백엔드로부터 받은 우리 서비스의 JWT 토큰을 저장합니다.
+      const { access, refresh } = response.data;
+      if (access && refresh) {
         await SecureStore.setItemAsync('accessToken', access);
-        if (refresh) {
-          await SecureStore.setItemAsync('refreshToken', refresh);
-        }
+        await SecureStore.setItemAsync('refreshToken', refresh);
 
-        // 로그인 성공, 홈으로 이동
+        Alert.alert('로그인 성공!', 'NO_PLAN에 오신 것을 환영합니다.');
+        // 로그인 성공 후 홈으로 이동합니다.
         router.replace('/(tabs)/home');
 
       } else {
-        Alert.alert('로그인 실패', '백엔드로부터 유효한 토큰을 받지 못했습니다.');
-        router.back();
+        // 성공 응답을 받았지만 토큰이 없는 경우
+        throw new Error('서버 응답에 토큰이 포함되지 않았습니다.');
       }
     } catch (error) {
-      console.error('백엔드로 코드 전송 중 에러 발생:', error);
-      Alert.alert('로그인 오류', '로그인 처리 중 문제가 발생했습니다.');
-      router.back();
+      // 이 catch 블록은 이제 handleKakaoLogin 함수에서 처리합니다.
+      // 여기서 에러를 다시 던져서 상위 함수가 인지하도록 합니다.
+      throw error;
     }
   };
 
+  // 카카오 로그인 버튼을 눌렀을 때 실행될 메인 함수
+  const handleKakaoLogin = async () => {
+    if (isLoading) return; // 로딩 중 중복 클릭 방지
+
+    setIsLoading(true);
+    try {
+      // 1. 네이티브 SDK로 카카오 로그인 실행
+      const token = await login();
+
+      // 2. 성공 시 받아온 access_token을 우리 백엔드로 전송
+      await sendTokenToBackend(token.accessToken);
+
+    } catch (error) {
+      console.error('카카오 로그인 처리 중 전체 프로세스 에러:', error);
+      // axios 에러인 경우, 상세 내용을 보여줄 수 있습니다.
+      if (axios.isAxiosError(error)) {
+        console.error('Axios 에러 상세:', error.response?.data);
+        Alert.alert('로그인 오류', `서버와 통신 중 문제가 발생했습니다: ${error.response?.data?.detail || error.message}`);
+      } else {
+        // 그 외의 에러 (예: 사용자가 카카오 로그인 창을 닫은 경우)
+        Alert.alert('로그인 실패', '로그인 과정이 중단되었습니다.');
+      }
+    } finally {
+      // 성공/실패 여부와 관계없이 로딩 상태를 해제합니다.
+      setIsLoading(false);
+    }
+  };
+
+  // --- 기존의 WebView를 네이티브 로그인 버튼 UI로 완전히 교체 ---
   return (
     <SafeAreaView style={styles.container}>
-      <WebView
-        ref={webviewRef}
-        style={styles.container}
-        // 카카오 인가 요청 URL
-        source={{
-          uri: `https://kauth.kakao.com/oauth/authorize?response_type=code&client_id=${KAKAO_REST_API_KEY}&redirect_uri=${BACKEND_REDIRECT_URI}`,
-        }}
-        // 웹뷰의 URL이 변경될 때마다 실행
-        onNavigationStateChange={(navState) => {
-          // URL이 백엔드의 Redirect URI로 변경되었는지 확인
-          if (navState.url.startsWith(BACKEND_REDIRECT_URI) && !isCodeHandled.current) {
+      <View style={styles.content}>
+        <Text style={styles.title}>NO_PLAN</Text>
+        <Text style={styles.subtitle}>여행의 모든 것을 한 곳에서</Text>
 
-            // URL에서 'code=' 다음의 값을 추출
-            const url = new URL(navState.url);
-            const code = url.searchParams.get('code');
-
-            if (code) {
-              isCodeHandled.current = true; // 처리 시작 플래그 설정
-
-              // ★★★ 더 이상 WebView가 페이지를 로드하지 않도록 막습니다.
-              webviewRef.current?.stopLoading();
-
-              // 추출한 코드를 백엔드로 POST 전송
-              postCodeToBackend(code);
-            }
-          }
-        }}
-        // 로딩 중 사용자에게 피드백을 주기 위함
-        renderLoading={() => (
-          <View style={styles.loader}>
-            <ActivityIndicator size="large" color="#000000" />
-          </View>
-        )}
-        startInLoadingState={true}
-      />
+        <TouchableOpacity
+          style={styles.kakaoButton}
+          onPress={handleKakaoLogin}
+          disabled={isLoading} // 로딩 중에는 버튼 비활성화
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#000000" />
+          ) : (
+            <>
+              {/* 카카오 로고 이미지가 있다면 아래 Image 컴포넌트를 사용하세요. */}
+              {/* <Image source={require('@/assets/images/kakao_logo.png')} style={styles.kakaoLogo} /> */}
+              <Text style={styles.kakaoButtonText}>카카오로 시작하기</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -94,11 +111,41 @@ export default function KakaoLoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  loader: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  content: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  title: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 60,
+  },
+  kakaoButton: {
+    backgroundColor: '#FEE500',
+    width: '100%',
+    height: 50,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kakaoLogo: {
+    width: 24,
+    height: 24,
+    marginRight: 10,
+  },
+  kakaoButtonText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
