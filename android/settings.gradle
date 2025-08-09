@@ -1,4 +1,25 @@
+// android/settings.gradle 파일
+
 pluginManagement {
+  // --- 이 블록이 추가/수정되었습니다 ---
+  repositories {
+      google()
+      mavenCentral()
+      gradlePluginPortal()
+  }
+  resolutionStrategy {
+      eachPlugin {
+          // 요청된 플러그인이 코틀린 관련 플러그인일 경우,
+          if (requested.id.id.startsWith("org.jetbrains.kotlin")) {
+              // rootProject의 build.gradle에 정의된 kotlinVersion 변수("1.8.20")를 사용하도록 강제합니다.
+              useVersion(rootProject.ext.kotlinVersion)
+          }
+      }
+  }
+  // --- 여기까지가 추가/수정된 블록입니다 ---
+
+
+  // --- 이하는 기존 코드를 그대로 유지합니다 ---
   def reactNativeGradlePlugin = new File(
     providers.exec {
       workingDir(rootDir)
