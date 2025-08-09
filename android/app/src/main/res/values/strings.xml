@@ -1,7 +1,0 @@
-<resources>
-  <string name="app_name">NoPlan</string>
-  <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>
-  <string name="kakao_app_key">8aef54490fca5199b3701d81e9cd1eb0</string>
-  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
-  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
-</resources>
