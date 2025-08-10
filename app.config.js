@@ -1,8 +1,6 @@
 module.exports = {
   expo: {
-    // 여기에 owner 필드를 추가합니다.
     owner: 'noplan-team',
-
     name: 'NoPlan',
     slug: 'NoPlan',
     version: '1.0.0',
@@ -45,7 +43,7 @@ module.exports = {
         'expo-build-properties',
         {
           android: {
-            kotlinVersion: '1.8.22', // 안정적인 버전 명시
+            kotlinVersion: '1.8.22',
             repositories: [
               { url: 'https://devrepo.kakao.com/nexus/content/groups/public/' },
             ],
@@ -61,7 +59,6 @@ module.exports = {
         origin: false,
       },
       eas: {
-        // 이 projectId가 'noplan-team' 소유의 프로젝트입니다.
         projectId: '67cffa78-bba4-420b-97ed-3cc43e88724f',
       },
     },
