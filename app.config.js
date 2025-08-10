@@ -1,6 +1,5 @@
 module.exports = {
   expo: {
-    owner: 'noplan-team',
     name: 'NoPlan',
     slug: 'NoPlan',
     version: '1.0.0',
@@ -57,10 +56,7 @@ module.exports = {
     extra: {
       router: {
         origin: false,
-      },
-      eas: {
-        projectId: '67cffa78-bba4-420b-97ed-3cc43e88724f',
-      },
+      }
     },
   },
 };
