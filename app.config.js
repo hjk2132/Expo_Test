@@ -1,78 +1,85 @@
 // app.config.js (궁극의 최종 수정본)
 
-const { withDangerousMod, withPlugins } = require('@expo/config-plugins');
+const { withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
 /**
- * 모든 하위 프로젝트(node_modules 내의 라이브러리 포함)의 build.gradle 파일을 순회하며
- * 코틀린 버전을 강제로 덮어쓰는 궁극의 커스텀 플러그인입니다.
+ * 모든 하위 프로젝트의 build.gradle 파일을 순회하며,
+ * 알려진 모든 패턴의 코틀린 버전 정의를 '1.8.22'로 강제 덮어쓰는 플러그인.
  * @param {import('@expo/config-types').ExpoConfig} config
  */
-function withForcedKotlinVersion(config) {
+const withForcedKotlinVersion = (config) => {
   return withDangerousMod(config, [
     'android',
     async (config) => {
       const projectRoot = config.modRequest.projectRoot;
       const nodeModulesPath = path.join(projectRoot, 'node_modules');
+      
+      const patchGradleFile = (filePath) => {
+        if (fs.existsSync(filePath)) {
+          let contents = fs.readFileSync(filePath, 'utf-8');
+          
+          // Pattern 1: ext.kotlinVersion = "..."
+          const pattern1 = /ext\.kotlinVersion\s*=\s*['"][\d\.]+['"]/g;
+          // Pattern 2: def kotlin_version = "..." or rootProject.ext.get(...)
+          const pattern2 = /def\s+kotlin_version\s*=\s*.+/g;
+          // Pattern 3: classpath "...:kotlin-gradle-plugin:..."
+          const pattern3 = /(classpath.*?kotlin-gradle-plugin:)(['"])[^'"]+(['"])/g;
+          // Pattern 4: rnsDefaultKotlinVersion = '...'
+          const pattern4 = /rnsDefaultKotlinVersion\s*=\s*['"][\d\.]+['"]/g;
 
-      // node_modules를 순회하며 build.gradle 파일을 찾습니다.
-      const packages = fs.readdirSync(nodeModulesPath);
-      for (const pkg of packages) {
-        let pkgPath = path.join(nodeModulesPath, pkg);
-        // @scope/package 형태의 패키지 처리
-        if (pkg.startsWith('@')) {
-          const scopedPackages = fs.readdirSync(pkgPath);
-          for (const scopedPkg of scopedPackages) {
-            await findAndPatchGradleFile(path.join(pkgPath, scopedPkg));
+          let modified = false;
+          if (pattern1.test(contents)) {
+            contents = contents.replace(pattern1, 'ext.kotlinVersion = "1.8.22"');
+            modified = true;
           }
-        } else {
-          await findAndPatchGradleFile(pkgPath);
+          if (pattern2.test(contents)) {
+            contents = contents.replace(pattern2, 'def kotlin_version = "1.8.22"');
+            modified = true;
+          }
+           if (pattern3.test(contents)) {
+            contents = contents.replace(pattern3, '$1$21.8.22$3');
+            modified = true;
+          }
+          if (pattern4.test(contents)) {
+            contents = contents.replace(pattern4, 'rnsDefaultKotlinVersion = "1.8.22"');
+            modified = true;
+          }
+
+          if (modified) {
+            console.log(`✅ Patched Kotlin version in: ${path.relative(projectRoot, filePath)}`);
+            fs.writeFileSync(filePath, contents);
+          }
         }
-      }
+      };
+
+      const traverseNodeModules = (dir) => {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          if (file === 'build.gradle' && fs.lstatSync(fullPath).isFile()) {
+            patchGradleFile(fullPath);
+          } else if (fs.lstatSync(fullPath).isDirectory()) {
+            // @scoped/package or regular package
+            if (file.startsWith('@') || fs.existsSync(path.join(fullPath, 'android', 'build.gradle'))) {
+              const gradlePath = path.join(fullPath, 'android', 'build.gradle');
+              patchGradleFile(gradlePath);
+            }
+          }
+        }
+      };
+      
+      traverseNodeModules(nodeModulesPath);
+      
       return config;
     },
   ]);
-}
-
-/**
- * 특정 패키지 경로에서 android/build.gradle 파일을 찾아 코틀린 버전을 수정합니다.
- * @param {string} packagePath 
- */
-async function findAndPatchGradleFile(packagePath) {
-  const gradleFilePath = path.join(packagePath, 'android', 'build.gradle');
-  if (fs.existsSync(gradleFilePath)) {
-    let contents = fs.readFileSync(gradleFilePath, 'utf-8');
-    
-    // 문제를 일으키는 모든 종류의 코틀린 버전 정의 라인을 찾습니다.
-    const kotlinVersionRegex = /kotlinVersion\s*=\s*['"][\d.]+['"]/g;
-    const kotlin_versionRegex = /kotlin_version\s*=\s*['"][\d.]+['"]/g;
-    const complexKotlinVersionRegex = /def\s+kotlin_version\s*=\s*rootProject\.ext\.has\('kotlinVersion'\)\s*\?/g;
-
-    let modified = false;
-    if (contents.match(kotlinVersionRegex)) {
-      contents = contents.replace(kotlinVersionRegex, 'kotlinVersion = "1.8.22"');
-      modified = true;
-    }
-    if (contents.match(kotlin_versionRegex)) {
-      contents = contents.replace(kotlin_versionRegex, 'kotlin_version = "1.8.22"');
-      modified = true;
-    }
-    if (contents.match(complexKotlinVersionRegex)) {
-      contents = contents.replace(complexKotlinVersionRegex, 'def kotlin_version = "1.8.22" //');
-      modified = true;
-    }
-    
-    if (modified) {
-      console.log(`Patched kotlin version in: ${gradleFilePath}`);
-      fs.writeFileSync(gradleFilePath, contents);
-    }
-  }
-}
+};
 
 // 메인 설정을 내보냅니다.
 module.exports = ({ config }) => {
-  const expoConfig = {
+  const baseConfig = {
     ...config,
     owner: 'xiest',
     name: 'NoPlan',
@@ -117,7 +124,6 @@ module.exports = ({ config }) => {
         'expo-build-properties',
         {
           android: {
-            // 루트 프로젝트의 코틀린 버전은 여기서 설정합니다.
             kotlinVersion: '1.8.22',
             repositories: [
               { url: 'https://devrepo.kakao.com/nexus/content/groups/public/' },
@@ -139,7 +145,6 @@ module.exports = ({ config }) => {
     },
   };
 
-  // withPlugins를 사용하여 여러 플러그인을 순차적으로 적용합니다.
-  // 우리의 커스텀 플러그인을 가장 마지막에 실행하여 모든 것을 덮어쓰도록 합니다.
-  return withPlugins(expoConfig, [withForcedKotlinVersion]);
+  // withPlugins를 사용하지 않고, 직접 플러그인을 적용합니다.
+  return withForcedKotlinVersion(baseConfig);
 };
