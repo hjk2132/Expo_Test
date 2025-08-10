@@ -1,5 +1,6 @@
 module.exports = {
   expo: {
+    // owner 필드는 이제 없어야 합니다.
     name: 'NoPlan',
     slug: 'NoPlan',
     version: '1.0.0',
@@ -56,7 +57,11 @@ module.exports = {
     extra: {
       router: {
         origin: false,
-      }
+      },
+      eas: {
+        // 이 부분을 직접 추가해주는 것이 핵심입니다!
+        "projectId": "7fb126e9-50a3-4269-9fcf-a94c9280eafb"
+      },
     },
   },
 };
