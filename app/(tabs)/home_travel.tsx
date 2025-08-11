@@ -1,20 +1,20 @@
 // app/(tabs)/home_travel.tsx
 
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Modal,
-  SectionList,
-  Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Modal,
+  SectionList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import CustomTopBar from '../(components)/CustomTopBar';
-import { useTravelSurvey, TravelSurveyData } from '../(components)/TravelSurveyContext';
+import { TravelSurveyData, useTravelSurvey } from '../(components)/TravelSurveyContext';
 import {
   travelService,
   Trip,
@@ -151,9 +151,9 @@ export default function HomeTravel() {
       
       // 이동수단에 따른 반경 설정
       const radiusMap: { [key: string]: number } = {
-        '도보': 200,
-        '대중교통': 500,
-        '자가용': 1000,
+        '도보': 1000,
+        '대중교통': 2000,
+        '자가용': 3000,
       };
       const radius = radiusMap[survey.transportation || '대중교통'] || 500;
       
@@ -169,7 +169,7 @@ export default function HomeTravel() {
       setSurvey(newSurvey);
       
       // 🆕 survey_destination.tsx로 이동하여 일관된 흐름 유지
-      router.replace('/survey_destination');
+      router.push('/survey_destination');
     } catch (e) {
       console.error('자동 추천 처리 실패:', e);
       Alert.alert('오류', '위치 정보를 가져올 수 없습니다.');
@@ -315,7 +315,7 @@ export default function HomeTravel() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.bottomBtnBlue}
-          onPress={() => router.replace('/survey_destination')}
+          onPress={() => router.push('/survey_destination')}
         >
           <Text style={styles.bottomBtnTextBlue}>다음 행선지</Text>
         </TouchableOpacity>
@@ -338,9 +338,30 @@ export default function HomeTravel() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalBtnBlue}
-                onPress={() => {
+                onPress={async () => {
                   setShowModal(false);
-                  router.replace('/home');
+                  try {
+                    // 최신 trip 가져오기
+                    const trips = await travelService.getTripData();
+                    const latest = trips.sort((a, b) => b.id - a.id)[0];
+                    
+                    // 여행 요약 생성
+                    const summaryData = await travelService.summarizeTrip(latest.id);
+                    
+                    // summary.tsx로 이동하면서 요약 데이터 전달
+                    router.replace({
+                      pathname: '/summary',
+                      params: { 
+                        tripId: latest.id.toString(),
+                        summary: summaryData.summary,
+                        region: latest.region
+                      }
+                    });
+                  } catch (e) {
+                    console.error('여행 요약 생성 실패:', e);
+                    // 요약 생성 실패 시 바로 홈으로 이동
+                    router.replace('/home');
+                  }
                 }}
               >
                 <Text style={styles.modalBtnTextBlue}>여행 종료</Text>

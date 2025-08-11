@@ -1,47 +1,45 @@
 // app/kakao.tsx
 
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, SafeAreaView, View, ActivityIndicator, Alert, TouchableOpacity, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { login } from '@react-native-seoul/kakao-login';
 
-// 백엔드의 카카오 로그인 처리 URL (urls.py에 정의된 경로)
+// 백엔드 API URL (환경 변수로 관리하는 것을 권장)
+// 예: const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 const BACKEND_API_URL = 'https://www.no-plan.cloud/api/v1/users/kakao/';
 
 export default function KakaoLoginScreen() {
   const router = useRouter();
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = useState(false);
 
   // 백엔드로 카카오 액세스 토큰을 전송하는 함수
   const sendTokenToBackend = async (accessToken: string) => {
     try {
       console.log(`백엔드로 카카오 액세스 토큰(accessToken)을 POST 요청으로 보냅니다: ${accessToken}`);
 
-      // dj-rest-auth의 SocialLoginView는 'access_token' 필드를 기대합니다.
       const response = await axios.post(BACKEND_API_URL, {
         access_token: accessToken,
       });
 
       console.log('백엔드로부터 최종 JWT 응답 수신:', response.data);
 
-      // 백엔드로부터 받은 서비스 자체의 JWT 토큰 저장
       const { access, refresh } = response.data;
       if (access) {
         await SecureStore.setItemAsync('accessToken', access);
         if (refresh) {
           await SecureStore.setItemAsync('refreshToken', refresh);
         }
-        // 로그인 성공, 홈으로 이동
         router.replace('/(tabs)/home');
       } else {
         throw new Error('백엔드로부터 유효한 토큰을 받지 못했습니다.');
       }
     } catch (error) {
       console.error('백엔드로 토큰 전송 중 에러 발생:', error);
-      Alert.alert('로그인 오류', '로그인 처리 중 문제가 발생했습니다.');
-      router.back();
+      Alert.alert('로그인 오류', '서버와 통신 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      // 실패 시 현재 화면에 머물러 재시도 유도
     }
   };
 
@@ -49,21 +47,21 @@ export default function KakaoLoginScreen() {
   const signInWithKakao = async () => {
     if (loading) return;
     setLoading(true);
+
     try {
       const token = await login();
       console.log('카카오 로그인 성공, 액세스 토큰:', token.accessToken);
-
-      // 로그인 성공 후 받은 액세스 토큰을 백엔드로 전송
       await sendTokenToBackend(token.accessToken);
-
     } catch (error) {
       console.error('카카오 로그인 실패:', error);
       if (String(error).includes('cancel')) {
+        // 사용자가 로그인을 취소한 경우, 이전 화면으로 돌아감
         Alert.alert('알림', '카카오 로그인이 취소되었습니다.');
+        router.back();
       } else {
-        Alert.alert('로그인 실패', '카카오 로그인 중 오류가 발생했습니다.');
+        // 그 외 에러의 경우, 현재 화면에 머물며 재시도 유도
+        Alert.alert('로그인 실패', '카카오 로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
-      router.back();
     } finally {
       setLoading(false);
     }
@@ -95,10 +93,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    backgroundColor: '#FFFFFF',
   },
-  content: {
-    flex: 1,
   content: {
     flex: 1,
     justifyContent: 'center',

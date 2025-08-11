@@ -1,13 +1,13 @@
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
+  SafeAreaView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  SafeAreaView
+  View
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { authService } from '../../service/authService';
 
 export default function SignupScreen() {
@@ -26,9 +26,10 @@ export default function SignupScreen() {
     try {
       const res = await authService.signUp(email, password, confirmPassword);
       setSuccess('회원가입이 완료되었습니다!');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
+      // 회원가입 후 로그인 페이지로 이동
+      setTimeout(() => {
+        router.replace('/(tabs)/signin');
+      }, 1000); // 사용자가 성공 메시지를 볼 수 있도록 1초 지연
     } catch (err: any) {
       if (err.response) {
         if (err.response.data.email) {
@@ -89,7 +90,7 @@ export default function SignupScreen() {
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 40 }}>
         <Text style={styles.footerText}>이미 계정이 있으신가요? </Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/signin')}>
+        <TouchableOpacity onPress={() => router.replace('/(tabs)/signin')}>
           <Text style={styles.loginText}>로그인하기</Text>
         </TouchableOpacity>
       </View>
