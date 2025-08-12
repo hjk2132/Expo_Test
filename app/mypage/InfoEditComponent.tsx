@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Switch, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
+// userService의 UserInfo 타입을 직접 import 할 필요가 없어졌습니다.
 import { userService } from '../../service/userService';
 import { authService } from '../../service/authService';
 import * as Location from 'expo-location';
@@ -15,7 +16,7 @@ interface ExtendedUserInfo {
   name: string | null;
   email: string;
   is_info_exist: boolean;
-  isKakaoLinked: boolean; // 카카오 연동 여부
+  isKakaoLinked: boolean;
 }
 
 interface Props {
@@ -33,43 +34,44 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
   const [error, setError] = useState('');
   const router = useRouter();
 
-  // 카카오 연동 상태를 관리할 새로운 상태 변수 추가
   const [isKakaoLinked, setIsKakaoLinked] = useState(false);
-  const [connectLoading, setConnectLoading] = useState(false); // 연결 버튼 로딩 상태
+  const [connectLoading, setConnectLoading] = useState(false);
 
-  // 사용자 정보와 카카오 연동 상태를 함께 불러오는 함수
-  const fetchUserData = useCallback(async () => {
-    // setLoading(true); // 전체 로딩보다는 부분 로딩이 더 나은 경험을 줄 수 있습니다.
-    setError('');
-    try {
-      // UserInfo 타입을 확장한 타입으로 캐스팅합니다.
-      const userInfo = await userService.getUserInfo() as ExtendedUserInfo;
-      setName(userInfo.name ?? '회원님');
-      setEmail(userInfo.email);
-      // API 응답에서 받은 값으로 연동 상태를 업데이트합니다.
-      setIsKakaoLinked(userInfo.isKakaoLinked);
-    } catch (err: any) {
-      setError('사용자 정보를 불러오지 못했습니다.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // 화면이 포커스될 때마다 사용자 정보를 다시 불러옵니다.
-  useFocusEffect(fetchUserData);
-  
-  // 위치 권한 확인 훅
+  // ##################################################################
+  // ### ▼▼▼ 이 부분의 구조가 경고 메시지에 맞춰 수정되었습니다 ▼▼▼ ###
+  // ##################################################################
   useFocusEffect(
     useCallback(() => {
+      // useFocusEffect 안에서 async 함수를 정의합니다.
+      const fetchUserData = async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const userInfo = await userService.getUserInfo() as ExtendedUserInfo;
+          setName(userInfo.name ?? '회원님');
+          setEmail(userInfo.email);
+          setIsKakaoLinked(userInfo.isKakaoLinked);
+        } catch (err: any) {
+          setError('사용자 정보를 불러오지 못했습니다.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // 그리고 그 함수를 바로 호출합니다.
+      fetchUserData();
+
+      // 위치 권한 확인 로직도 여기에 포함시킬 수 있습니다.
       const checkLocationPermission = async () => {
         const { status } = await Location.getForegroundPermissionsAsync();
         setIsLocationEnabled(status === Location.PermissionStatus.GRANTED);
       };
       checkLocationPermission();
-    }, [])
+      
+    }, []) // 의존성 배열은 비워둡니다.
   );
 
-  // 카카오 계정 연결 함수
+  // 카카오 계정 연결 함수 (기존과 동일)
   const handleConnectKakao = () => {
     Alert.alert(
       "카카오 계정 연결", "현재 계정에 카카오 계정을 연결하시겠습니까?",
@@ -82,7 +84,6 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
             try {
               await authService.connectKakaoAccount();
               Alert.alert("성공", "카카오 계정이 성공적으로 연결되었습니다.");
-              // 연결 성공 시, 화면 상태를 즉시 갱신
               setIsKakaoLinked(true);
             } catch (error: any) {
               const errorMessage = error.response?.data?.error || "계정 연결 중 오류가 발생했습니다.";
@@ -98,7 +99,7 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
     );
   };
 
-  // 로그아웃 함수
+  // 로그아웃 함수 (기존과 동일)
   const handleLogout = () => {
     Alert.alert(
       "로그아웃", "로그아웃 하시겠습니까?",
@@ -121,7 +122,8 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
       ]
     );
   };
-
+  
+  // 이하 렌더링 부분은 기존과 동일합니다.
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -150,7 +152,6 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           <Text style={styles.link}>변경</Text>
         </TouchableOpacity>
 
-        {/* 카카오 연동 섹션 UI 동적 변경 */}
         <View style={styles.settingRow}>
           <View style={styles.iconLabel}>
             <Image
