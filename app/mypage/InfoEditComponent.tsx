@@ -1,21 +1,12 @@
 // mypage/InfoEditComponent.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Switch, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
-import { userService } from '../../service/userService';
 import { authService } from '../../service/authService';
 import * as Location from 'expo-location';
-import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-
-interface ExtendedUserInfo {
-  id: number;
-  name: string | null;
-  email: string;
-  is_info_exist: boolean;
-  isKakaoLinked: boolean;
-}
+// ★★★ 경로가 수정되었습니다. (../가 두 개에서 한 개로 변경) ★★★
+import { useAuth } from '../(contexts)/AuthContext';
 
 interface Props {
   onBack: () => void;
@@ -24,50 +15,22 @@ interface Props {
 }
 
 const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) => {
+  const router = useRouter();
+  
+  const { userInfo, logout: authLogout, refreshUserInfo } = useAuth();
+
   const [isLocationEnabled, setIsLocationEnabled] = useState(true);
   const [isAlarmEnabled, setIsAlarmEnabled] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const router = useRouter();
-
-  const [isKakaoLinked, setIsKakaoLinked] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
 
-  // ##################################################################
-  // ### ▼▼▼ 이 함수를 재사용할 것이므로 그대로 둡니다 ▼▼▼ ###
-  // ##################################################################
-  const fetchUserData = useCallback(async () => {
-    // setLoading(true); // 전체 화면 로딩보다는 부분 로딩이 더 나은 경험을 줍니다.
-    setError('');
-    try {
-      const userInfo = await userService.getUserInfo() as ExtendedUserInfo;
-      setName(userInfo.name ?? '회원님');
-      setEmail(userInfo.email);
-      setIsKakaoLinked(userInfo.isKakaoLinked);
-    } catch (err: any) {
-      setError('사용자 정보를 불러오지 못했습니다.');
-    } finally {
-      setLoading(false);
-    }
+  React.useEffect(() => {
+    const checkLocationPermission = async () => {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      setIsLocationEnabled(status === Location.PermissionStatus.GRANTED);
+    };
+    checkLocationPermission();
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchUserData();
-      
-      const checkLocationPermission = async () => {
-        const { status } = await Location.getForegroundPermissionsAsync();
-        setIsLocationEnabled(status === Location.PermissionStatus.GRANTED);
-      };
-      checkLocationPermission();
-    }, [fetchUserData]) // fetchUserData를 의존성 배열에 추가
-  );
-
-  // ##################################################################
-  // ### ▼▼▼ 이 함수의 로직이 수정되었습니다 ▼▼▼ ###
-  // ##################################################################
   const handleConnectKakao = () => {
     Alert.alert(
       "카카오 계정 연결", "현재 계정에 카카오 계정을 연결하시겠습니까?",
@@ -78,17 +41,9 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           onPress: async () => {
             setConnectLoading(true);
             try {
-              // 1. 계정 연동 API를 호출합니다.
               await authService.connectKakaoAccount();
+              await refreshUserInfo(); 
               Alert.alert("성공", "카카오 계정이 성공적으로 연결되었습니다.");
-              
-              // 2. (핵심 수정) 성공 후, 서버로부터 최신 사용자 정보를 다시 불러옵니다.
-              // 이렇게 하면 isKakaoLinked 상태가 확실하게 true로 업데이트됩니다.
-              await fetchUserData(); 
-              
-              // 3. (제거) 더 이상 낙관적 업데이트는 필요 없습니다.
-              // setIsKakaoLinked(true); // 이 줄은 삭제합니다.
-
             } catch (error: any) {
               const errorMessage = error.response?.data?.error || "계정 연결 중 오류가 발생했습니다.";
               if (!String(error).includes('cancel')) {
@@ -110,9 +65,7 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           text: "로그아웃",
           onPress: async () => {
             try {
-              await authService.logout();
-              await SecureStore.deleteItemAsync('accessToken');
-              await SecureStore.deleteItemAsync('refreshToken');
+              await authLogout();
               router.replace('/'); 
             } catch (error) {
               Alert.alert("오류", "로그아웃 중 문제가 발생했습니다.");
@@ -123,9 +76,11 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
     ]);
   };
   
-  if (loading) {
+  if (!userInfo) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
   }
+
+  const isKakaoLinked = userInfo.is_kakao_linked;
 
   return (
     <View style={styles.container}>
@@ -134,14 +89,13 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
       </TouchableOpacity>
       
       <View style={styles.card}>
-        {/* ... (이름, 이메일, 비밀번호 등) ... */}
         <View style={styles.infoBlock}>
           <Text style={styles.label}>이름</Text>
-          <Text style={styles.value}>{error ? error : name}</Text>
+          <Text style={styles.value}>{userInfo.name ?? '회원님'}</Text>
         </View>
         <View style={styles.infoBlock}>
           <Text style={styles.label}>이메일</Text>
-          <Text style={styles.value}>{error ? error : email}</Text>
+          <Text style={styles.value}>{userInfo.email}</Text>
         </View>
         <TouchableOpacity onPress={onPassword} style={styles.passwordRow}>
           <Text style={styles.label}>비밀번호 변경</Text>
@@ -167,7 +121,6 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           )}
         </View>
         
-        {/* ... (나머지 UI) ... */}
         <View style={styles.settingRow}>
           <Text style={styles.label}>위치 정보 제공</Text>
           <Switch
