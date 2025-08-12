@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Switch, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
-// userService의 UserInfo 타입을 직접 import 할 필요가 없어졌습니다.
 import { userService } from '../../service/userService';
 import { authService } from '../../service/authService';
 import * as Location from 'expo-location';
@@ -10,7 +9,6 @@ import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 
-// UserInfo 타입을 확장하여 isKakaoLinked 필드를 포함시킵니다.
 interface ExtendedUserInfo {
   id: number;
   name: string | null;
@@ -38,40 +36,38 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
   const [connectLoading, setConnectLoading] = useState(false);
 
   // ##################################################################
-  // ### ▼▼▼ 이 부분의 구조가 경고 메시지에 맞춰 수정되었습니다 ▼▼▼ ###
+  // ### ▼▼▼ 이 함수를 재사용할 것이므로 그대로 둡니다 ▼▼▼ ###
   // ##################################################################
+  const fetchUserData = useCallback(async () => {
+    // setLoading(true); // 전체 화면 로딩보다는 부분 로딩이 더 나은 경험을 줍니다.
+    setError('');
+    try {
+      const userInfo = await userService.getUserInfo() as ExtendedUserInfo;
+      setName(userInfo.name ?? '회원님');
+      setEmail(userInfo.email);
+      setIsKakaoLinked(userInfo.isKakaoLinked);
+    } catch (err: any) {
+      setError('사용자 정보를 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      // useFocusEffect 안에서 async 함수를 정의합니다.
-      const fetchUserData = async () => {
-        setLoading(true);
-        setError('');
-        try {
-          const userInfo = await userService.getUserInfo() as ExtendedUserInfo;
-          setName(userInfo.name ?? '회원님');
-          setEmail(userInfo.email);
-          setIsKakaoLinked(userInfo.isKakaoLinked);
-        } catch (err: any) {
-          setError('사용자 정보를 불러오지 못했습니다.');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      // 그리고 그 함수를 바로 호출합니다.
       fetchUserData();
-
-      // 위치 권한 확인 로직도 여기에 포함시킬 수 있습니다.
+      
       const checkLocationPermission = async () => {
         const { status } = await Location.getForegroundPermissionsAsync();
         setIsLocationEnabled(status === Location.PermissionStatus.GRANTED);
       };
       checkLocationPermission();
-      
-    }, []) // 의존성 배열은 비워둡니다.
+    }, [fetchUserData]) // fetchUserData를 의존성 배열에 추가
   );
 
-  // 카카오 계정 연결 함수 (기존과 동일)
+  // ##################################################################
+  // ### ▼▼▼ 이 함수의 로직이 수정되었습니다 ▼▼▼ ###
+  // ##################################################################
   const handleConnectKakao = () => {
     Alert.alert(
       "카카오 계정 연결", "현재 계정에 카카오 계정을 연결하시겠습니까?",
@@ -82,9 +78,17 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           onPress: async () => {
             setConnectLoading(true);
             try {
+              // 1. 계정 연동 API를 호출합니다.
               await authService.connectKakaoAccount();
               Alert.alert("성공", "카카오 계정이 성공적으로 연결되었습니다.");
-              setIsKakaoLinked(true);
+              
+              // 2. (핵심 수정) 성공 후, 서버로부터 최신 사용자 정보를 다시 불러옵니다.
+              // 이렇게 하면 isKakaoLinked 상태가 확실하게 true로 업데이트됩니다.
+              await fetchUserData(); 
+              
+              // 3. (제거) 더 이상 낙관적 업데이트는 필요 없습니다.
+              // setIsKakaoLinked(true); // 이 줄은 삭제합니다.
+
             } catch (error: any) {
               const errorMessage = error.response?.data?.error || "계정 연결 중 오류가 발생했습니다.";
               if (!String(error).includes('cancel')) {
@@ -99,11 +103,8 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
     );
   };
 
-  // 로그아웃 함수 (기존과 동일)
   const handleLogout = () => {
-    Alert.alert(
-      "로그아웃", "로그아웃 하시겠습니까?",
-      [
+    Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
         { text: "취소", style: "cancel" },
         { 
           text: "로그아웃",
@@ -119,17 +120,11 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           },
           style: 'destructive'
         }
-      ]
-    );
+    ]);
   };
   
-  // 이하 렌더링 부분은 기존과 동일합니다.
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ActivityIndicator style={{ flex: 1 }} size="large" />;
   }
 
   return (
@@ -139,6 +134,7 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
       </TouchableOpacity>
       
       <View style={styles.card}>
+        {/* ... (이름, 이메일, 비밀번호 등) ... */}
         <View style={styles.infoBlock}>
           <Text style={styles.label}>이름</Text>
           <Text style={styles.value}>{error ? error : name}</Text>
@@ -151,7 +147,7 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           <Text style={styles.label}>비밀번호 변경</Text>
           <Text style={styles.link}>변경</Text>
         </TouchableOpacity>
-
+        
         <View style={styles.settingRow}>
           <View style={styles.iconLabel}>
             <Image
@@ -170,7 +166,8 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
             </TouchableOpacity>
           )}
         </View>
-
+        
+        {/* ... (나머지 UI) ... */}
         <View style={styles.settingRow}>
           <Text style={styles.label}>위치 정보 제공</Text>
           <Switch
@@ -182,7 +179,6 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           />
         </View>
         <Text style={styles.subtext}>고객님의 현재 위치 기반으로 더 나은 추천을 위해 수집됩니다.</Text>
-        
         <View style={styles.settingRow}>
           <Text style={styles.label}>알림 설정</Text>
           <Switch
@@ -193,11 +189,9 @@ const InfoEditComponent: React.FC<Props> = ({ onBack, onPassword, onDelete }) =>
           />
         </View>
         <Text style={styles.subtext}>고객님의 일정에 대한 알림을 제공합니다.</Text>
-        
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <Text style={styles.logoutText}>로그아웃</Text>
         </TouchableOpacity>
-        
         <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
           <Text style={styles.deleteText}>계정 삭제하기</Text>
         </TouchableOpacity>
